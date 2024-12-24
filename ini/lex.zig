@@ -36,7 +36,7 @@ pub inline fn is_digit(c: i32) bool {
 }
 
 pub inline fn is_ident_start(c: i32) bool {
-    return c < 48 or c > 57 or c >= 0x80 or c == 0x00;
+    return c >= 0 and c <= 127 or c >= 0x80 or c == 0x00;
 }
 
 pub const Token = struct {
@@ -59,7 +59,6 @@ pub const Token = struct {
         comment,
         colon,
         equal,
-        number,
         string,
         whitespace,
         pub fn to_str(tok: Token) []const u8 {
@@ -70,7 +69,6 @@ pub const Token = struct {
                 .comment => "comment",
                 .colon => "colon",
                 .equal => "equal",
-                .number => "number",
                 .string => "string",
                 .whitespace => "whitespace",
             }
@@ -174,12 +172,6 @@ pub const Lex = struct {
                         }
                     }
                 },
-                '0'...'9' => {
-                    while (is_digit(self.code_point)) {
-                        self.step();
-                    }
-                    self.token.kind = Token.Kind.number;
-                },
                 ':' => {
                     self.step();
                     self.token.kind = Token.Kind.colon;
@@ -221,7 +213,7 @@ pub const Lex = struct {
     }
 };
 
-pub fn Tokenizer(input: []const u8, allocator: Allocator) ArrayList(Token) {
+pub fn Tokenizer(input: []const u8, allocator: Allocator) !ArrayList(Token) {
     var lex = Lex.init(input);
     var tokens = ArrayList(Token).init(allocator);
     lex.step();
@@ -232,4 +224,9 @@ pub fn Tokenizer(input: []const u8, allocator: Allocator) ArrayList(Token) {
     }
 
     return tokens;
+}
+
+test "UTF8 decode" {
+    try std.testing.expectEqual(CodePoint{ .width = 3, .code_point = 20320 }, UTF8.char_at(0, "你"));
+    try std.testing.expectEqual(CodePoint{ .width = 1, .code_point = 122 }, UTF8.char_at(3, "nonzzz"));
 }
