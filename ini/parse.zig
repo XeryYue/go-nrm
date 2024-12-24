@@ -12,14 +12,15 @@ pub const Parse = struct {
     allocator: Allocator,
     tokens: []Token,
     const Self = @This();
-    pub fn init(allocator: Allocator) void {
+    pub fn init(allocator: Allocator) Self {
         return Self{
             .allocator = allocator,
+            .tokens = undefined,
         };
     }
 
     pub fn parse(self: *Self, buffer: []const u8) !void {
-        const result = try lex.Tokenizer(buffer, Self.allocator);
+        const result = try lex.Tokenizer(buffer, self.allocator);
         defer {
             result.deinit();
         }
@@ -33,6 +34,7 @@ pub const Parse = struct {
                 Token.Kind.string => {
                     //
                 },
+                else => {},
             }
         }
     }
@@ -59,3 +61,20 @@ pub const Parse = struct {
         return self.tokens[self.pos + 1];
     }
 };
+
+fn TestParse(fixture_name: []const u8, allocator: Allocator) !void {
+    const cwd = try std.process.getCwdAlloc(allocator);
+    const path = try std.fs.path.join(allocator, &[_][]const u8{ cwd, "/ini/__fixtures__/", fixture_name });
+    const content = try std.fs.cwd().readFileAlloc(allocator, path, std.math.maxInt(usize));
+    defer {
+        allocator.free(cwd);
+        allocator.free(path);
+        allocator.free(content);
+    }
+    var parse = Parse.init(allocator);
+    try parse.parse(content);
+}
+
+test "Parse" {
+    try TestParse("base.ini", std.testing.allocator);
+}

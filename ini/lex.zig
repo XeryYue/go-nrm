@@ -39,6 +39,16 @@ pub inline fn is_ident_start(c: i32) bool {
     return c >= 0 and c <= 127 or c >= 0x80 or c == 0x00;
 }
 
+inline fn skip_not_valid_sequence(c: i32) bool {
+    switch (c) {
+        -1 => return true,
+        '[' => return true,
+        ':', '=' => return true,
+        '\r', '\n' => return true,
+        else => return false,
+    }
+}
+
 pub const Token = struct {
     const Self = @This();
     kind: Kind,
@@ -47,6 +57,7 @@ pub const Token = struct {
     line_number: usize,
     flag: Flag,
     pub const Flag = enum(u3) {
+        none,
         hash,
         semi_colon,
         single_quote,
@@ -76,7 +87,7 @@ pub const Token = struct {
     };
     pub fn init() Self {
         return Self{
-            .kind = Kind.eof,
+            .kind = Kind.end_of_file,
             .start = 0,
             .end = undefined,
             .line_number = 0,
@@ -99,7 +110,7 @@ pub const Lex = struct {
             .index = 0,
             .line_number = 1,
             .code_point = undefined,
-            .token = Token.init(),
+            .token = undefined,
         };
     }
 
@@ -120,7 +131,8 @@ pub const Lex = struct {
 
     pub inline fn next(self: *Self) !void {
         while (true) {
-            self.token.start = self.index;
+            self.token = Token.init();
+            self.token.start = self.index - 1;
             switch (self.code_point) {
                 -1 => self.token.kind = Token.Kind.end_of_file,
                 ' ', '\t', '\r', '\n', '\u{c}' => {
@@ -181,35 +193,23 @@ pub const Lex = struct {
                     self.token.kind = Token.Kind.equal;
                 },
                 else => {
-                    if (is_ident_start(self.code_point)) {
-                        loop: while (true) {
-                            switch (self.code_point) {
-                                -1 => {
-                                    break :loop;
-                                },
-                                '[' => {
-                                    break :loop;
-                                },
-                                ':', '=' => {
-                                    break :loop;
-                                },
-                                '\r', '\n' => {
-                                    break :loop;
-                                },
-                                else => {
-                                    self.step();
-                                },
-                            }
-                        }
-                        self.token.kind = Token.Kind.string;
-                    } else {
-                        self.step();
-                    }
+                    self.token.kind = self.consume_str();
                 },
             }
-            self.token.end = self.index;
+            self.token.end = if (self.index + 1 <= self.buffer.len) self.index - 1 else self.index;
+            self.token.line_number = self.line_number;
             return;
         }
+    }
+
+    fn consume_str(self: *Self) Token.Kind {
+        while (true) {
+            if (skip_not_valid_sequence(self.code_point)) {
+                break;
+            }
+            self.step();
+        }
+        return Token.Kind.string;
     }
 };
 
@@ -218,7 +218,7 @@ pub fn Tokenizer(input: []const u8, allocator: Allocator) !ArrayList(Token) {
     var tokens = ArrayList(Token).init(allocator);
     lex.step();
     try lex.next();
-    while (lex.token.kind != Token.Kind.eof) {
+    while (lex.token.kind != Token.Kind.end_of_file) {
         try tokens.append(lex.token);
         try lex.next();
     }

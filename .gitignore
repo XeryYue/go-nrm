@@ -11,3 +11,4 @@ windows
 .idea
 
 .zig-cache
+zig-out
