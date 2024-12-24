@@ -9,3 +9,5 @@ windows
 
 .vscode
 .idea
+
+.zig-cache
