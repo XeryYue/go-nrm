@@ -56,19 +56,12 @@ pub const Token = struct {
     end: usize,
     line_number: usize,
     flag: Flag,
-    pub const Flag = enum(u3) {
-        none,
-        hash,
-        semi_colon,
-        single_quote,
-        double_quote,
-    };
+    pub const Flag = enum(u3) { none, hash, semi_colon, single_quote, double_quote, normal_equal, colon_equal };
     pub const Kind = enum(u8) {
         end_of_file,
         open_bracket,
         close_bracket,
         comment,
-        colon,
         equal,
         string,
         whitespace,
@@ -184,13 +177,10 @@ pub const Lex = struct {
                         }
                     }
                 },
-                ':' => {
-                    self.step();
-                    self.token.kind = Token.Kind.colon;
-                },
-                '=' => {
-                    self.step();
+                ':', '=' => {
                     self.token.kind = Token.Kind.equal;
+                    self.token.flag = if (self.code_point == '=') Token.Flag.normal_equal else Token.Flag.colon_equal;
+                    self.step();
                 },
                 else => {
                     self.token.kind = self.consume_str();
