@@ -28,21 +28,28 @@ pub fn build(b: *std.Build) void {
 
     const zig_cli = b.dependency("zig-cli", .{});
 
-    const ini_test = b.addTest(.{
-        .root_source_file = b.path("ini/test.zig"),
-        .target = target,
-        .optimize = optimize,
+    // const ini_test = b.addTest(.{
+    //     .root_source_file = b.path("ini/test.zig"),
+    //     .target = target,
+    //     .optimize = optimize,
+    // });
+
+    // const run_ini_test = b.addRunArtifact(ini_test);
+    // const test_step = b.step("test-ini", "Run ini module test");
+    // test_step.dependOn(&run_ini_test.step);
+
+    // const ini = b.addModule("ini", .{
+    //     .root_source_file = b.path("ini/ini.zig"),
+    // });
+
+    const commands = b.addModule("commands", .{
+        .root_source_file = b.path("src/commands/mod.zig"),
     });
 
-    const run_ini_test = b.addRunArtifact(ini_test);
-    const test_step = b.step("test-ini", "Run ini module test");
-    test_step.dependOn(&run_ini_test.step);
+    commands.addImport("zig-cli", zig_cli.module("zig-cli"));
 
-    const ini = b.addModule("ini", .{
-        .root_source_file = b.path("ini/ini.zig"),
-    });
-
-    exe.root_module.addImport("ini", ini);
+    // exe.root_module.addImport("ini", ini);
+    exe.root_module.addImport("commands", commands);
     exe.root_module.addImport("zig-cli", zig_cli.module("zig-cli"));
 
     // This declares intent for the executable to be installed into the

@@ -11,4 +11,6 @@ windows
 .idea
 
 .zig-cache
-zig-out
+.zig-out/bin
+*.exe
+*.pdb

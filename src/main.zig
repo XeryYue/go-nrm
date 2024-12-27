@@ -1,7 +1,8 @@
 const std = @import("std");
-const cli = @import("zig-cli");
-const ini = @import("ini");
+const cli = @import("./cli.zig");
 
-pub fn main() void {
-    std.debug.print("{any}\n", .{cli.ColorUsage.always});
+pub fn main() anyerror!void {
+    const action = try cli.parseArgs();
+    const r = action();
+    return r;
 }

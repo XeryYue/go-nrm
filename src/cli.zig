@@ -1,78 +1,50 @@
-const builtin = @import("builtin");
+const std = @import("std");
 const cli = @import("zig-cli");
-const ini = @import("ini");
+const Commands = @import("commands");
 
-pub const Command = struct {
-    pub const Type = enum(u8) {
-        list,
-        current,
-        use,
-        add,
-        default,
-        delete,
-        fetch, // test is keyword
-    };
+var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+const allocator = gpa.allocator();
 
-    pub fn execute(command: Command) type {
-        switch (command) {
-            .list => List,
-            .current => Current,
-            .use => Use,
-            .add => Add,
-            .default => Default,
-            .delete => Delete,
-            .fetch => Fetch,
-        }
+const command = enum {
+    add,
+    current,
+    default,
+    delete,
+    fetch,
+    use,
+    list,
+    inline fn parse(c: command) cli.Command {
+        return switch (c) {
+            .add => Commands.Add().apply(),
+            .current => Commands.Current().apply(),
+            .default => Commands.Default().apply(),
+            .delete => Commands.Delete().apply(),
+            .fetch => Commands.Fetch().apply(),
+            .use => Commands.Use().apply(),
+            .list => Commands.List().apply(),
+        };
     }
-    pub const List = cli.Command{
-        .name = "list",
-        .description = cli.Description{
-            .one_line = "List all available registry.",
-            .detailed =
-            \\Aliased as ls.
-            ,
-        },
-    };
-
-    pub const Current = cli.Command{
-        .name = "current",
-        .description = cli.Description{
-            .one_line = "Show the currently used registry.",
-        },
-    };
-
-    pub const Use = cli.Command{
-        .name = "use",
-        .description = cli.Description{
-            .one_line = "Use a specific registry.",
-        },
-    };
-
-    pub const Add = cli.Command{
-        .name = "add",
-        .description = cli.Description{
-            .one_line = "Add a new registry.",
-        },
-    };
-
-    pub const Default = cli.Command{
-        .name = "default",
-        .description = cli.Description{
-            .one_line = "Set a registry as default.",
-        },
-    };
-
-    pub const Delete = cli.Command{
-        .name = "delete",
-        .description = cli.Description{
-            .one_line = "Delete a registry.",
-        },
-    };
-
-    pub const Fetch = cli.Command{
-        .name = "fetch",
-        .description = cli.Description{
-            .one_line = "Test response time for a registry or all registries.",
-        },
-    };
 };
+
+pub fn parseArgs() cli.AppRunner.Error!cli.ExecFn {
+    var r = try cli.AppRunner.init(allocator);
+
+    const app = cli.App{
+        .command = cli.Command{
+            .name = "grm",
+            .target = cli.CommandTarget{
+                .subcommands = &.{
+                    command.add.parse(),
+                    command.current.parse(),
+                    command.default.parse(),
+                    command.delete.parse(),
+                    command.fetch.parse(),
+                    command.use.parse(),
+                    command.list.parse(),
+                },
+            },
+        },
+    };
+
+    return r.getAction(&app);
+}
