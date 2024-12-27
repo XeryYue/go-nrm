@@ -26,6 +26,18 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const exe_test = b.addTest(.{
+        .root_source_file = b.path("src/mod.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const run_exc_test = b.addRunArtifact(exe_test);
+
+    const test_step = b.step("test", "Run exe test");
+
+    test_step.dependOn(&run_exc_test.step);
+
     const zig_cli = b.dependency("zig-cli", .{});
 
     // const ini_test = b.addTest(.{
