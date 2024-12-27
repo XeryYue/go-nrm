@@ -1,5 +1,8 @@
 const cli = @import("zig-cli");
 const Command = @import("./command.zig").Command;
+const std = @import("std");
+
+fn list_impl() !void {}
 
 pub const List = struct {
     const Self = @This();
@@ -11,7 +14,11 @@ pub const List = struct {
             .description = cli.Description{
                 .one_line = "list all available registry.",
             },
-            .target = cli.CommandTarget{},
+            .target = cli.CommandTarget{
+                .action = cli.CommandAction{
+                    .exec = list_impl,
+                },
+            },
         };
     }
 

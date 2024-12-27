@@ -1,7 +1,7 @@
 const cli = @import("zig-cli");
 const Command = @import("./command.zig").Command;
 
-fn x() !void {}
+fn use_impl() !void {}
 
 pub const Use = struct {
     const Self = @This();
@@ -15,7 +15,7 @@ pub const Use = struct {
             },
             .target = cli.CommandTarget{
                 .action = cli.CommandAction{
-                    .exec = x,
+                    .exec = use_impl,
                 },
             },
         };

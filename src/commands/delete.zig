@@ -1,6 +1,8 @@
 const cli = @import("zig-cli");
 const Command = @import("./command.zig").Command;
 
+fn delete_impl() !void {}
+
 pub const Delete = struct {
     const Self = @This();
 
@@ -11,7 +13,11 @@ pub const Delete = struct {
             .description = cli.Description{
                 .one_line = "delete a registry.",
             },
-            .target = cli.CommandTarget{},
+            .target = cli.CommandTarget{
+                .action = cli.CommandAction{
+                    .exec = delete_impl,
+                },
+            },
         };
     }
 

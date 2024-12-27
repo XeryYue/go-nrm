@@ -1,6 +1,8 @@
 const cli = @import("zig-cli");
 const Command = @import("./command.zig").Command;
 
+fn current_version_impl() !void {}
+
 pub const Current = struct {
     const Self = @This();
 
@@ -11,7 +13,11 @@ pub const Current = struct {
             .description = cli.Description{
                 .one_line = "show the currently used registry.",
             },
-            .target = cli.CommandAction{},
+            .target = cli.CommandTarget{
+                .action = cli.CommandAction{
+                    .exec = current_version_impl,
+                },
+            },
         };
     }
 

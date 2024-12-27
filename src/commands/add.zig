@@ -2,10 +2,11 @@ const cli = @import("zig-cli");
 const Command = @import("./command.zig").Command;
 const std = @import("std");
 
-fn h() !void {}
+fn add_impl() !void {}
 
 pub const Add = struct {
     const Self = @This();
+
     fn add(ptr: *anyopaque) cli.Command {
         _ = ptr;
         return cli.Command{
@@ -13,9 +14,11 @@ pub const Add = struct {
             .description = cli.Description{
                 .one_line = "add a new registry.",
             },
-            .target = cli.CommandTarget{ .action = cli.CommandAction{
-                .exec = h,
-            } },
+            .target = cli.CommandTarget{
+                .action = cli.CommandAction{
+                    .exec = add_impl,
+                },
+            },
         };
     }
 

@@ -1,6 +1,8 @@
 const cli = @import("zig-cli");
 const Command = @import("./command.zig").Command;
 
+fn fetch_impl() !void {}
+
 pub const Fetch = struct {
     const Self = @This();
 
@@ -11,7 +13,11 @@ pub const Fetch = struct {
             .description = cli.Description{
                 .one_line = "test response time for a registry or all registries.",
             },
-            .target = cli.CommandTarget{},
+            .target = cli.CommandTarget{
+                .action = cli.CommandAction{
+                    .exec = fetch_impl,
+                },
+            },
         };
     }
 
