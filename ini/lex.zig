@@ -28,7 +28,7 @@ pub const UTF8 = struct {
 };
 
 pub inline fn is_whitespace(c: i32) bool {
-    return c == ' ' or c == '\t' or c == '\r' or c == '\n' or c == '\u{c}';
+    return c == ' ' or c == '\t';
 }
 
 pub inline fn is_digit(c: i32) bool {
@@ -43,6 +43,7 @@ inline fn skip_not_valid_sequence(c: i32) bool {
     switch (c) {
         -1 => return true,
         '[' => return true,
+        ']' => return true,
         ':', '=' => return true,
         '\r', '\n' => return true,
         else => return false,
@@ -56,7 +57,15 @@ pub const Token = struct {
     end: usize,
     line_number: usize,
     flag: Flag,
-    pub const Flag = enum(u3) { none, hash, semi_colon, single_quote, double_quote, normal_equal, colon_equal };
+    pub const Flag = enum(u3) {
+        none,
+        hash,
+        semi_colon,
+        single_quote,
+        double_quote,
+        normal_equal,
+        colon_equal,
+    };
     pub const Kind = enum(u8) {
         end_of_file,
         open_bracket,
@@ -65,6 +74,7 @@ pub const Token = struct {
         equal,
         string,
         whitespace,
+        break_line,
         pub fn to_str(tok: Token) []const u8 {
             switch (tok) {
                 .end_of_file => "end_of_file",
@@ -75,6 +85,7 @@ pub const Token = struct {
                 .equal => "equal",
                 .string => "string",
                 .whitespace => "whitespace",
+                .break_line => "break_line",
             }
         }
     };
@@ -128,12 +139,18 @@ pub const Lex = struct {
             self.token.start = self.index - 1;
             switch (self.code_point) {
                 -1 => self.token.kind = Token.Kind.end_of_file,
-                ' ', '\t', '\r', '\n', '\u{c}' => {
+                ' ', '\t' => {
                     self.step();
                     while (is_whitespace(self.code_point)) {
                         self.step();
                     }
                     self.token.kind = Token.Kind.whitespace;
+                },
+                '\r', '\n' => {
+                    while (self.code_point == '\r' or self.code_point == '\n') {
+                        self.step();
+                    }
+                    self.token.kind = Token.Kind.break_line;
                 },
                 '[' => {
                     self.step();
@@ -144,8 +161,8 @@ pub const Lex = struct {
                     self.token.kind = Token.Kind.close_bracket;
                 },
                 '#', ';' => {
-                    self.step();
                     self.token.flag = if (self.code_point == '#') Token.Flag.hash else Token.Flag.semi_colon;
+                    self.step();
                     loop: while (true) {
                         switch (self.code_point) {
                             -1, '\r', '\n' => {
@@ -163,7 +180,7 @@ pub const Lex = struct {
                     self.step();
                     loop: while (true) : (self.step()) {
                         switch (self.code_point) {
-                            -1, '\r', '\n', '\u{c}' => {
+                            -1, '\r', '\n' => {
                                 break :loop;
                             },
                             else => {

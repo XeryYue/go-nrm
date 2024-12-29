@@ -1,91 +1,13 @@
 const std = @import("std");
 const lex = @import("./lex.zig");
+const ast = @import("./ast.zig");
 
 const Token = lex.Token;
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-const ArrayListUnmanaged = std.ArrayListUnmanaged;
-
-// We should also provide detail loc info.
-pub const Loc = struct {
-    line: usize,
-    start: usize,
-    end: usize,
-    pub inline fn create(line: usize, start: usize, end: usize) Loc {
-        return Loc{
-            .line = line,
-            .start = start,
-            .end = end,
-        };
-    }
-};
-
-const NodeLoc = struct {
-    start: Loc,
-    end: Loc,
-};
-
-pub const Node = struct {
-    kind: NodeKind,
-    loc: NodeLoc = NodeLoc{
-        .start = undefined,
-        .end = undefined,
-    },
-    pub const NodeKind = enum(u3) {
-        pairs,
-        section,
-        comment,
-        identifer,
-    };
-    pub const Pairs = struct {
-        base: Node = .{
-            .kind = NodeKind.pairs,
-            .loc = undefined,
-        },
-        decl: Identifer = undefined,
-        init: Identifer = undefined,
-    };
-    pub const Section = struct {
-        base: Node = .{
-            .kind = NodeKind.section,
-            .loc = undefined,
-        },
-        children: []Node,
-    };
-    pub const Comment = struct {
-        base: Node = .{
-            .kind = NodeKind.comment,
-            .loc = undefined,
-        },
-        text: []const u8,
-    };
-
-    pub const Identifer = struct {
-        base: Node = .{
-            .kind = NodeKind.identifer,
-            .loc = undefined,
-        },
-        value: []const u8,
-        pub inline fn create_loc(self: *Identifer, line: usize, start: usize, end: usize) void {
-            self.base.loc.start = Loc.create(line, start, end);
-            self.base.loc.end = Loc.create(line, start, end);
-        }
-    };
-
-    pub fn deinit(self: *Node, allocator: Allocator) void {
-        switch (self.kind) {
-            .pairs => {
-                const p: *Node.Pairs = @fieldParentPtr("base", self);
-                allocator.destroy(p);
-            },
-            else => unreachable,
-        }
-    }
-};
-
-pub const AST = struct {
-    nodes: ArrayListUnmanaged(*Node) = .{},
-};
+const AST = ast.AST;
+const Loc = ast.Loc;
+const Node = ast.Node;
 
 pub const ParseError = error{
     InvalidPairs, // like missing init
@@ -115,7 +37,11 @@ pub const Parse = struct {
         for (self.ast.nodes.items) |node| {
             node.deinit(self.allocator);
         }
+        for (self.ast.comments.items) |node| {
+            node.deinit(self.allocator);
+        }
         self.ast.nodes.deinit(self.allocator);
+        self.ast.comments.deinit(self.allocator);
     }
 
     pub fn parse(self: *Self, buffer: []const u8) !void {
@@ -123,21 +49,24 @@ pub const Parse = struct {
         defer tokens.deinit();
         self.tokens = try tokens.toOwnedSlice();
         self.source = buffer;
-        // std.debug.print("{any}\n", .{self.tokens});
-        for (self.tokens) |token| {
-            if (self.pos >= self.tokens.len) break;
-            switch (token.kind) {
+        loop: while (true) {
+            switch (self.current().kind) {
                 Token.Kind.end_of_file => {
-                    break;
+                    break :loop;
                 },
                 Token.Kind.string => {
                     const pairs = try self.consume_key_value_pairs();
                     try self.ast.nodes.append(self.allocator, pairs);
                 },
-                // Token.Kind.open_bracket => {},
-                else => {
-                    self.advance();
+                Token.Kind.comment => {
+                    const comment = try self.consume_comment();
+                    try self.ast.comments.append(self.allocator, comment);
                 },
+                Token.Kind.open_bracket => {
+                    const section = try self.consume_section();
+                    try self.ast.nodes.append(self.allocator, section);
+                },
+                else => self.advance(),
             }
         }
     }
@@ -149,7 +78,9 @@ pub const Parse = struct {
         const key_token = self.current();
         const key_raw = self.decode_text();
         node.base.loc.start = Loc.create(key_token.line_number, key_token.start, key_token.start + key_raw.len);
+
         self.advance();
+
         loop: while (true) {
             switch (self.current().kind) {
                 Token.Kind.end_of_file => {
@@ -162,26 +93,27 @@ pub const Parse = struct {
                     break :loop;
                 },
                 Token.Kind.equal => {
-                    if (self.expect(Token.Kind.string)) {
-                        const value_token = self.current();
-                        const value_raw = self.decode_text();
-                        node.base.loc.end = Loc.create(value_token.line_number, value_token.end, value_token.end + value_raw.len);
-                        node.decl = Node.Identifer{
-                            .value = key_raw,
-                        };
-                        const start = node.base.loc.start;
-                        const end = node.base.loc.end;
-                        node.decl.create_loc(start.line, start.start, start.end);
-                        node.init = Node.Identifer{
-                            .value = value_raw,
-                        };
-                        node.init.create_loc(end.line, end.start, end.end);
-                    }
+                    _ = self.eat(Token.Kind.whitespace);
+                    _ = self.eat(Token.Kind.string);
+                    const value_token = self.current();
+                    const value_raw = self.decode_text();
+                    node.base.loc.end = Loc.create(value_token.line_number, value_token.end, value_token.end + value_raw.len);
+                    node.decl = Node.Identifer{
+                        .value = key_raw,
+                    };
+                    const start = node.base.loc.start;
+                    const end = node.base.loc.end;
+                    node.decl.create_loc(start.line, start.start, start.end);
+                    node.init = Node.Identifer{
+                        .value = value_raw,
+                    };
+                    node.init.create_loc(end.line, end.start, end.end);
                     self.advance();
                     break :loop;
                 },
-                Token.Kind.whitespace => {
-                    // self.advance();
+                Token.Kind.whitespace => self.advance(),
+                Token.Kind.break_line => {
+                    self.advance();
                     break :loop;
                 },
                 else => {
@@ -192,11 +124,86 @@ pub const Parse = struct {
         return &node.base;
     }
 
-    // fn consume_comment(self: *Self) void {
+    fn consume_comment(self: *Self) !*Node {
+        const node = try self.allocator.create(Node.Comment);
+        errdefer self.allocator.destroy(node);
+        node.* = .{};
+        node.flag = self.current().flag;
 
-    // }
+        const comment_token = self.current();
+        const comment_raw = self.decode_text();
 
-    // fn consume_section(self: *Self) void {}
+        node.base.loc.start = Loc.create(comment_token.line_number, comment_token.start, comment_token.end);
+        node.base.loc.end = Loc.create(comment_token.line_number, comment_token.start, comment_token.end);
+        node.text = comment_raw;
+
+        self.advance();
+
+        return &node.base;
+    }
+
+    fn consume_section(self: *Self) ParseError!*Node {
+        const start_token = self.current();
+
+        _ = self.eat(Token.Kind.whitespace);
+
+        self.advance();
+
+        const node = try self.allocator.create(Node.Section);
+
+        errdefer self.allocator.destroy(node);
+
+        errdefer {
+            for (node.children.items) |child| {
+                child.deinit(self.allocator);
+            }
+            node.children.deinit(self.allocator);
+        }
+
+        node.* = .{};
+        node.name = Node.Identifer{
+            .value = self.decode_text(),
+        };
+        node.name.create_loc(self.current().line_number, self.current().start, self.current().end);
+
+        node.base.loc.start = Loc.create(start_token.line_number, start_token.start, self.current().end);
+        node.base.loc.end = Loc.create(start_token.line_number, start_token.start, self.current().end);
+
+        _ = self.eat(Token.Kind.whitespace);
+        self.advance();
+
+        if (self.peek().kind == Token.Kind.close_bracket) {
+            return error.InvalidSection;
+        }
+        self.advance();
+        loop: while (true) {
+            switch (self.current().kind) {
+                Token.Kind.break_line => {
+                    self.advance();
+                },
+                Token.Kind.whitespace => self.advance(),
+                Token.Kind.string => {
+                    const pairs = try self.consume_key_value_pairs();
+                    try node.children.append(self.allocator, pairs);
+                },
+                Token.Kind.comment => {
+                    const comment = try self.consume_comment();
+                    try self.ast.comments.append(self.allocator, comment);
+                },
+                Token.Kind.open_bracket => {
+                    break :loop;
+                },
+                Token.Kind.end_of_file => {
+                    break :loop;
+                },
+                else => {
+                    return error.UnexpectedToken;
+                },
+            }
+        }
+
+        return &node.base;
+    }
 
     inline fn advance(self: *Self) void {
         if (self.pos >= self.tokens.len) {
@@ -205,6 +212,9 @@ pub const Parse = struct {
         self.pos += 1;
     }
     inline fn current(self: *Self) Token {
+        if (self.pos >= self.tokens.len) {
+            return Token.init();
+        }
         return self.tokens[self.pos];
     }
     inline fn peek(self: *Self) Token {
@@ -213,7 +223,7 @@ pub const Parse = struct {
         }
         return self.tokens[self.pos + 1];
     }
-    inline fn expect(self: *Self, kind: Token.Kind) bool {
+    inline fn eat(self: *Self, kind: Token.Kind) bool {
         if (self.peek().kind == kind) {
             self.advance();
             return true;
@@ -226,7 +236,7 @@ pub const Parse = struct {
     }
 };
 
-fn TestParse(fixture_name: []const u8, allocator: Allocator) !void {
+fn TestParse(fixture_name: []const u8, allocator: Allocator, expects: []const Node.NodeKind, comments: []const Node.NodeKind) !void {
     const cwd = try std.process.getCwdAlloc(allocator);
     const path = try std.fs.path.join(allocator, &[_][]const u8{ cwd, "/ini/__fixtures__/", fixture_name });
     const content = try std.fs.cwd().readFileAlloc(allocator, path, std.math.maxInt(usize));
@@ -238,9 +248,41 @@ fn TestParse(fixture_name: []const u8, allocator: Allocator) !void {
     var parse = Parse.init(allocator);
     defer parse.deinit();
     try parse.parse(content);
-    std.debug.print("{any}\n", .{parse.ast.nodes.items.len});
+
+    if (expects.len > 0) {
+        // std.debug.print("{any}\n", .{parse.ast.nodes.items.len});
+        // for (parse.ast.nodes.items) |n| {
+        //     switch (n.kind) {
+        //         .pairs => {
+        //             const p: *Node.Pairs = @fieldParentPtr("base", n);
+        //             std.debug.print("decl={s} -- init={s}\r\n", .{ p.decl.value, p.init.value });
+        //         },
+        //         .section => {
+        //             const p: *Node.Section = @fieldParentPtr("base", n);
+        //             std.debug.print("section name --- {s}\r\n", .{p.name.value});
+        //         },
+        //         else => {},
+        //     }
+        // }
+        // std.debug.assert(parse.ast.nodes.items.len >= expects.len);
+        for (expects, 0..) |expect, idx| {
+            try std.testing.expectEqual(expect, parse.ast.nodes.items[idx].kind);
+        }
+    }
+    if (comments.len > 0) {
+        // std.debug.print("{any}\n", .{parse.ast.comments.items});
+        std.debug.assert(parse.ast.comments.items.len >= comments.len);
+        for (comments, 0..) |expect, idx| {
+            try std.testing.expectEqual(expect, parse.ast.comments.items[idx].kind);
+        }
+    }
 }
 
 test "Parse" {
-    try TestParse("base.ini", std.testing.allocator);
+    try TestParse("base.ini", std.testing.allocator, &[_]Node.NodeKind{ .pairs, .pairs, .pairs }, &[_]Node.NodeKind{});
+    try TestParse("comment.ini", std.testing.allocator, &[_]Node.NodeKind{.pairs}, &[_]Node.NodeKind{
+        .comment,
+        .comment,
+    });
+    try TestParse("section.ini", std.testing.allocator, &[_]Node.NodeKind{.section}, &[_]Node.NodeKind{});
 }
